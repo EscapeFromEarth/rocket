@@ -112,7 +112,7 @@ tar -xzvf protobuf-cpp-3.19.4.tar.gz
 ```
 cd protobuf-cpp-3.19.4
 
-./configure -prefix=/usr/local
+./configure -prefix=/usr
 
 make -j4 
 
