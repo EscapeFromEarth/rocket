@@ -87,7 +87,7 @@ std::string LogLevelToString(LogLevel level);
 
 LogLevel StringToLogLevel(const std::string& log_level);
 
-class AsyncLogger {
+class AsyncLogger { // 异步日志器
 
  public:
   typedef std::shared_ptr<AsyncLogger> s_ptr;
@@ -126,7 +126,7 @@ class AsyncLogger {
 
   bool m_reopen_flag {false};
 
-  int m_no {0};   // 日志文件序号
+  int m_no {0};   // 日志文件序号，某一天当中的第几个文件（从 0 开始）
 
   bool m_stop_flag {false};
 

@@ -21,7 +21,10 @@
     } \
     m_listen_fds.insert(event->getFd()); \
     DEBUGLOG("add event success, fd[%d]", event->getFd()) \
-
+// 上面的 epoll_ctl 就是给 m_epoll_fd 里面的 event->getFd() 进行操作 op，
+// 而 &tmp 就是标识要操作的内容以及描述这个 fd 的信息。
+// 比如 EPOLL_CTL_MOD 就是把原本的 event->getEpollEvent() 进行修改，然后
+// 这里面的事件就是要给 event->getFd() 改成的样子。
 
 #define DELETE_TO_EPOLL() \
     auto it = m_listen_fds.find(event->getFd()); \
@@ -39,18 +42,19 @@
 
 namespace rocket {
 
-static thread_local EventLoop* t_current_eventloop = NULL;
+static thread_local EventLoop* t_current_eventloop = NULL; // thread_local 使得这个静态变量是线程局部的，也就
+                                                           // 是每个线程用的是不同的变量，每个线程里面有个单例
 static int g_epoll_max_timeout = 10000;
 static int g_epoll_max_events = 10;
 
 EventLoop::EventLoop() {
   if (t_current_eventloop != NULL) {
     ERRORLOG("failed to create event loop, this thread has created event loop");
-    exit(0);
+    exit(0); // 这个是终止整个进程的。
   }
   m_thread_id = getThreadId();
 
-  m_epoll_fd = epoll_create(10);
+  m_epoll_fd = epoll_create(10); // 想起来了，传这个参数是没有实际作用的（已经废弃），但是要求传，并且是正整数，填个 1 也就行。
 
   if (m_epoll_fd == -1) {
     ERRORLOG("failed to create event loop, epoll_create error, error info[%d]", errno);
@@ -87,7 +91,12 @@ void EventLoop::addTimerEvent(TimerEvent::s_ptr event) {
 }
 
 void EventLoop::initWakeUpFdEevent() {
-  m_wakeup_fd = eventfd(0, EFD_NONBLOCK);
+  m_wakeup_fd = eventfd(0, EFD_NONBLOCK); // 第一个参数：eventfd 底层是一个计数器，它的值可以通过写入到
+                                          // 该对象中来增加，可以通过从该对象中读取来减少。初始计数值指定
+                                          // 了创建时计数器的初始值。在这种情况下，初始计数值为 0 意味着
+                                          // 创建的 eventfd 对象的初始计数器值为 0。
+                                          // 第二个参数：设置为非阻塞。
+                                          // eventfd 是用于线程同步或进程间通信的。
   if (m_wakeup_fd < 0) {
     ERRORLOG("failed to create event loop, eventfd create error, error info[%d]", errno);
     exit(0);
@@ -98,7 +107,8 @@ void EventLoop::initWakeUpFdEevent() {
 
   m_wakeup_fd_event->listen(FdEvent::IN_EVENT, [this]() {
     char buf[8];
-    while(read(m_wakeup_fd, buf, 8) != -1 && errno != EAGAIN) {
+    // while(read(m_wakeup_fd, buf, 8) != -1 && errno != EAGAIN) {// 这个条件本来是 && 的，我改成 || 了，这个看不下去了，必须改的。
+    while(read(m_wakeup_fd, buf, 8) != -1 || errno != EAGAIN) { // 把文件描述符的缓冲区清空
     }
     DEBUGLOG("read full bytes from wakeup fd[%d]", m_wakeup_fd);
   });
@@ -193,7 +203,8 @@ void EventLoop::addEpollEvent(FdEvent* event) {
   if (isInLoopThread()) {
     ADD_TO_EPOLL();
   } else {
-    auto cb = [this, event]() {
+    auto cb = [this, event]() { // 这个 this 是有必要的，因为那些 m_ 变量其实本质上是把
+                                // this-> 隐藏了，所以匿名函数需要传个 this 给里面去用
       ADD_TO_EPOLL();
     };
     addTask(cb, true);
@@ -228,7 +239,9 @@ bool EventLoop::isInLoopThread() {
   return getThreadId() == m_thread_id;
 }
 
-
+// 这是一个线程内单例的实现，由于线程内只有一个任务序列（没有多协程之类），所以不加锁也没事。
+// 如果说不止一个任务序列，可以按照之前学的那样，在一个保证还只有一个任务序列的情况下就先调用
+// 一下，保证已经初始化，比如线程刚开始的时候。
 EventLoop* EventLoop::GetCurrentEventLoop() {
   if (t_current_eventloop) {
     return t_current_eventloop;

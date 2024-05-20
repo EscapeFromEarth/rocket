@@ -21,7 +21,8 @@ void CoredumpHandler(int signal_no) {
   g_logger->flush();
   pthread_join(g_logger->getAsyncLopger()->m_thread, NULL);
   pthread_join(g_logger->getAsyncAppLopger()->m_thread, NULL);
-
+  // 上面打印完日志，下面表示将信号 signal_no 的处理方式恢复为默认值（也
+  // 就是如果没有该函数的情况下，操作系统的处理方式，接下来让它来处理）
   signal(signal_no, SIG_DFL);
   raise(signal_no);
 }
@@ -61,14 +62,18 @@ void Logger::init() {
   if (m_type == 0) {
     return;
   }
+  
+  // 看得出来下面这个是在模拟轮转调度任务的方法。
   m_timer_event = std::make_shared<TimerEvent>(Config::GetGlobalConfig()->m_log_sync_inteval, true, std::bind(&Logger::syncLoop, this));
   EventLoop::GetCurrentEventLoop()->addTimerEvent(m_timer_event);
-  signal(SIGSEGV, CoredumpHandler);
-  signal(SIGABRT, CoredumpHandler);
-  signal(SIGTERM, CoredumpHandler);
-  signal(SIGKILL, CoredumpHandler);
-  signal(SIGINT, CoredumpHandler);
-  signal(SIGSTKFLT, CoredumpHandler);
+  
+  // 下面这些的意思是，如果出现这些信号的时候就交给我的 CoredumpHandler 函数处理。
+  signal(SIGSEGV, CoredumpHandler); // 段错误
+  signal(SIGABRT, CoredumpHandler); // 进程终止请求
+  signal(SIGTERM, CoredumpHandler); // 进程终止请求
+  signal(SIGKILL, CoredumpHandler); // 立即终止进程，GPT 说这个信号我们程序是无法捕获的，所以就算发生了也是立即终止，不会走 CoredumpHandler。
+  signal(SIGINT, CoredumpHandler); // 中断进程的信号，通常由用户按下 Ctrl+C 产生
+  signal(SIGSTKFLT, CoredumpHandler); // 协处理器栈故障
 
 }
 
@@ -209,7 +214,8 @@ AsyncLogger::AsyncLogger(const std::string& file_name, const std::string& file_p
 
   // assert(pthread_cond_init(&m_condtion, NULL) == 0);
 
-  sem_wait(&m_sempahore);
+  sem_wait(&m_sempahore); // 这个信号量其实就是直接把创建 AsyncLogger 类对象的这个线程卡死，
+                          // 然后创建出来的线程就是重复着从队列中取数据、把数据写入文件这样的循环中。
 
 }
 
@@ -221,10 +227,10 @@ void* AsyncLogger::Loop(void* arg) {
 
   assert(pthread_cond_init(&logger->m_condtion, NULL) == 0);
 
-  sem_post(&logger->m_sempahore);
+  sem_post(&logger->m_sempahore); // 下面是死循环，所以这个不会降的
 
   while(1) {
-    ScopeMutex<Mutex> lock(logger->m_mutex);
+    ScopeMutex<Mutex> lock(logger->m_mutex); // 跑 Loop 的线程只会有一个，但因为有人在写入，所以获取的时候还是要锁下。
     while(logger->m_buffer.empty()) {
       // printf("begin pthread_cond_wait back \n");
       pthread_cond_wait(&(logger->m_condtion), logger->m_mutex.getMutex());
@@ -262,14 +268,14 @@ void* AsyncLogger::Loop(void* arg) {
     std::string log_file_name = ss.str() + std::to_string(logger->m_no);
 
     if (logger->m_reopen_flag) {
-      if (logger->m_file_hanlder) {
+      if (logger->m_file_hanlder) { // 既然要重开一个，那么原来如果有就得关掉。
         fclose(logger->m_file_hanlder);
       }
-      logger->m_file_hanlder = fopen(log_file_name.c_str(), "a");
+      logger->m_file_hanlder = fopen(log_file_name.c_str(), "a"); // 是追加，因为有可能是重启服务器，前面可能已经写了点东西了。
       logger->m_reopen_flag = false;
     }
 
-    if (ftell(logger->m_file_hanlder) > logger->m_max_file_size) {
+    if (ftell(logger->m_file_hanlder) > logger->m_max_file_size) { // 文件过大了，做个滚动
       fclose(logger->m_file_hanlder);
 
       log_file_name = ss.str() + std::to_string(logger->m_no++);
@@ -280,10 +286,10 @@ void* AsyncLogger::Loop(void* arg) {
 
     for (auto& i : tmp) {
       if (!i.empty()) {
-        fwrite(i.c_str(), 1, i.length(), logger->m_file_hanlder);
+        fwrite(i.c_str(), 1, i.length(), logger->m_file_hanlder); // 1 表示每个数据项为 1 字节
       }
     }
-    fflush(logger->m_file_hanlder);
+    fflush(logger->m_file_hanlder); // 因为上面写的意思其实可能只是写到内存，这里就给他加在到硬盘，实时更新。
 
     if (logger->m_stop_flag) {
       return NULL;

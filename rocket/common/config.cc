@@ -2,7 +2,8 @@
 #include "rocket/common/config.h"
 
 
-
+// #name 将参数名 name 转换为字符串常量
+// FirstChildElement("xxx") 返回第一个名为 xxx 的子元素
 #define READ_XML_NODE(name, parent) \
 TiXmlElement* name##_node = parent->FirstChildElement(#name); \
 if (!name##_node) { \

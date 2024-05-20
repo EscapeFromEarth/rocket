@@ -18,7 +18,7 @@ class FdEvent {
 
   FdEvent();
 
-  ~FdEvent();
+  ~FdEvent(); // 这个竟然不是 virtual。。实际上要的。
 
   void setNonBlock();
 

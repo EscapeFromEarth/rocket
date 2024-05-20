@@ -25,7 +25,8 @@ class Timer : public FdEvent {
   void resetArriveTime();
 
  private:
-  std::multimap<int64_t, TimerEvent::s_ptr> m_pending_events;
+  std::multimap<int64_t, TimerEvent::s_ptr> m_pending_events; // 类似于 std::multiset<std::pair<xx, xx>>，但是这
+                                                              // 里的应该只有 key 会排序，任务不排，还是挺好用的 STL
   Mutex m_mutex;
 
 };
