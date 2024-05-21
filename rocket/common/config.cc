@@ -29,16 +29,16 @@ namespace rocket {
 static Config* g_config = NULL;
 
 
-Config* Config::GetGlobalConfig() {
+Config* Config::GetGlobalConfig() { // 当调用这个的时候配置一定是读完的了，因为在初始化的时候是单线程的，没初始化完怎么会来到这里。
   return g_config;
 }
 
-void Config::SetGlobalConfig(const char* xmlfile) {
+void Config::SetGlobalConfig(const char* xmlfile) { // 这个跟 InitGlobalLogger 也是一个道理，在主线程刚开始的时候就要调用
   if (g_config == NULL) {
     if (xmlfile != NULL) {
       g_config = new Config(xmlfile);
     } else {
-      g_config = new Config();
+      g_config = new Config(); // 还是要创建，否则上面直接拿个 nullptr 去用就 core 了
     }
 
   }

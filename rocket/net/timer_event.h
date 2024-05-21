@@ -37,7 +37,7 @@ class TimerEvent {
 
  private:
   int64_t m_arrive_time;    // ms
-  int64_t m_interval;       // ms
+  int64_t m_interval;       // ms，如果 m_is_repeated 则会用到。
   bool m_is_repeated {false};
   bool m_is_cancled {false}; 
 

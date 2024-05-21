@@ -24,7 +24,7 @@ pid_t getThreadId() {
   if (t_thread_id != 0) {
     return t_thread_id;
   }
-  return syscall(SYS_gettid);
+  return syscall(SYS_gettid); // 这个有点奇怪，为什么不把结果存在 t_thread_id 里面？
 }
 
 

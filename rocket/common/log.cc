@@ -105,7 +105,7 @@ void Logger::syncLoop() {
 
 
 void Logger::InitGlobalLogger(int type /*=1*/) {
-
+// 这个就是整个进程的单例，所以要在进程刚开始，只有主线程的时候去调用这个，不然后面获取的时候那种懒构造方式就得用锁。
   LogLevel global_log_level = StringToLogLevel(Config::GetGlobalConfig()->m_log_level);
   printf("Init log level [%s]\n", LogLevelToString(global_log_level).c_str());
   g_logger = new Logger(global_log_level, type);
@@ -183,7 +183,9 @@ std::string LogEvent::toString() {
 
 
 
-void Logger::pushLog(const std::string& msg) {
+void Logger::pushLog(const std::string& msg) { // 打日志现在都是要用锁的了，但不是直接写到文件上，而是先写到一
+                                               // 个内存缓冲区 m_buffer 上，然后隔一段时间就把 buffer 的内容
+                                               // 给到异步日志器上，让它去写入文件。
   if (m_type == 0) {
     printf((msg + "\n").c_str());
     return;
@@ -210,6 +212,7 @@ AsyncLogger::AsyncLogger(const std::string& file_name, const std::string& file_p
   
   sem_init(&m_sempahore, 0, 0);
 
+  // 这个线程是比较独立的，逻辑很简单，就是死循环运行 Loop 函数，在 buffer 有内容的时候就往文件里面推。
   assert(pthread_create(&m_thread, NULL, &AsyncLogger::Loop, this) == 0);
 
   // assert(pthread_cond_init(&m_condtion, NULL) == 0);

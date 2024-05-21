@@ -44,7 +44,7 @@ namespace rocket {
 
 static thread_local EventLoop* t_current_eventloop = NULL; // thread_local 使得这个静态变量是线程局部的，也就
                                                            // 是每个线程用的是不同的变量，每个线程里面有个单例
-static int g_epoll_max_timeout = 10000;
+static int g_epoll_max_timeout = 10000; // 单位 ms
 static int g_epoll_max_events = 10;
 
 EventLoop::EventLoop() {
@@ -118,7 +118,8 @@ void EventLoop::initWakeUpFdEevent() {
 }
 
 
-void EventLoop::loop() {
+void EventLoop::loop() { // 就说日志是怎么弄的，这个 loop 被谁调用过了？
+  printf("begin EventLoop::loop()\n");
   m_is_looping = true;
   while(!m_stop_flag) {
     ScopeMutex<Mutex> lock(m_mutex); 
@@ -141,7 +142,7 @@ void EventLoop::loop() {
     int timeout = g_epoll_max_timeout; 
     epoll_event result_events[g_epoll_max_events];
     // DEBUGLOG("now begin to epoll_wait");
-    int rt = epoll_wait(m_epoll_fd, result_events, g_epoll_max_events, timeout);
+    int rt = epoll_wait(m_epoll_fd, result_events, g_epoll_max_events, timeout); // timeout 单位 ms
     // DEBUGLOG("now end epoll_wait, rt = %d", rt);
 
     if (rt < 0) {
@@ -200,6 +201,14 @@ void EventLoop::dealWakeup() {
 }
 
 void EventLoop::addEpollEvent(FdEvent* event) {
+  // 因为 EventLoop 不止用在线程级单例中，其他地方也会创建，所以主 Reactor 在给
+  // 子 Reactor 添加事件的时候如果子 Reactor 自己也在添加，就冲突了，所以就要求
+  // 只有在子 Reactor 中才真正添加到 epoll 中，而其他人来添加的时候就是添加为一
+  // 个 task。
+  // 而添加 task 是不会引起 epoll 的反应的，它只是添加在任务队列中，上面那个处理
+  // epoll 事件的 loop 也是通过在队列中添加回调函数，等一波 epoll_wait 之后就把
+  // 堆积的任务完成了。也因此如果 epoll 等待过程中没人唤醒一下，它最多就得等 10s
+  // 才能执行任务，这样响应就太慢了，所以就有了 wake_fd 这个东西，专门敲下 epoll。
   if (isInLoopThread()) {
     ADD_TO_EPOLL();
   } else {
@@ -239,9 +248,9 @@ bool EventLoop::isInLoopThread() {
   return getThreadId() == m_thread_id;
 }
 
-// 这是一个线程内单例的实现，由于线程内只有一个任务序列（没有多协程之类），所以不加锁也没事。
-// 如果说不止一个任务序列，可以按照之前学的那样，在一个保证还只有一个任务序列的情况下就先调用
-// 一下，保证已经初始化，比如线程刚开始的时候。
+// 这是一个线程内单例的实现，由于线程内只有一个任务序列，所以不加锁也没事。如果说不
+// 止一个任务序列，可以按照之前学的那样，在一个保证还只有一个任务序列的情况下就先调
+// 用一下，保证已经初始化，比如线程刚开始的时候。
 EventLoop* EventLoop::GetCurrentEventLoop() {
   if (t_current_eventloop) {
     return t_current_eventloop;
